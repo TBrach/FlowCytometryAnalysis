@@ -1,0 +1,396 @@
+---
+title: "Template evaluation of flow cytometry data for cell counting project"
+author: "Thorsten Brach"
+date: "2019/01/03"
+output: html_document
+---
+
+
+
+
+# To use this template, you have to:
+
+- for a new experiment just adjust the section USER INPUT: Set parameters
+- All Thresholds at the LSRII refer to width, e.g. FSC-W and SSC-W and APC-W, it seems at DTU it is H (FSC-H was min 497 and SSC-H was 193 for THRESHOLDS 500 and 200 respectively)
+- Area = Width*Height/(2^16) at least for FSC-A and SSC-A, but most likely also for PE-A and FITC-A, because they take the same "steps"
+
+
+
+
+# Packages
+
+- References: 
+    - the flowCore vignette [https://www.bioconductor.org/packages/devel/bioc/vignettes/flowCore/inst/doc/HowTo-flowCore.pdf]
+    - This course: [https://bioinformatics.ca/workshops/2013/flow-cytometry-data-analysis-using-r-2013]
+
+
+```{r, echo = FALSE, message=FALSE, include = FALSE}
+## flowCore:
+# biocLite("BiocUpgrade")
+# source("https://bioconductor.org/biocLite.R")
+# biocLite("flowCore")
+library(flowCore); #packageVersion("flowCore")
+
+## ggcyto: for the gating set functions and some plot options
+# source("https://bioconductor.org/biocLite.R")
+# biocLite("ggcyto")
+library(ggcyto); #packageVersion("ggcyto")
+
+## ggplot2
+library(ggplot2); #packageVersion("ggplot2")
+
+## dplyr
+library(dplyr); #packageVersion("dplyr")
+
+## lubridate
+library(lubridate)
+
+## gridExtra for grid.arrange
+library(gridExtra)
+```
+
+
+
+
+# USER INPUT: Set parameters
+
+- **The flow rate and sample volume can be found using 20161206_ReadingTheXMLFiles.Rmd or opening the XML file in chrome. But I try to stick with 0.5 flowrate and volume 130**
+
+```{r, echo = TRUE, message=FALSE}
+# - define the path to your function file -
+functionpath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Functions_FC"
+function_file <- "20190103_FlowCytometry_FunctionsNew.R"
+# --
+
+# - define the path to the data you want to analyse -
+datapath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Data/20181129_TestExperiment_DTU"
+# --
+
+
+# - gating Thresholds and Polygons -
+FSC.A.low <- 0.5
+FSC.A.high <- Inf
+SSC.A.low <- 0.5
+SSC.A.high <- Inf
+
+Poly <- data.frame(x = c(200, 30000, 30000, 7000), y = c(10, 10, 1000, 1000))
+# --
+
+# - inputs for saving the data -
+savepath <- NULL
+savename <- NULL
+# --
+```
+
+
+
+
+# Source the functions
+
+
+```{r, echo = FALSE, message=FALSE}
+source(file.path(functionpath, function_file))
+```
+
+
+
+
+# Load the fcs files as flowFrame object list
+
+
+```{r, echo = FALSE, message=FALSE}
+files <- list.files(datapath) 
+files <- files[grepl("*.fcs", files)]
+
+# fcsFileList <- lapply(file.path(datapath, files), read.FCS, transformation=FALSE)
+fcsFileList <- lapply(file.path(datapath, files), read.FCS, transformation=FALSE, column.pattern = "-W|-H", invert.pattern = TRUE) # NB: I needed to use the patterns here, since in some cases the -W and -H columns were not recorded, unfortunately it does not affect the P names, e.g. $P15 still exists in the ones with -H
+names(fcsFileList) <- files
+```
+
+
+
+
+# Analyse the keyword parameters of the loaded files
+
+
+
+## The parameters related to the data channels
+
+```{r, echo = FALSE, message=FALSE}
+ParameterValuesList <- lapply(fcsFileList, extract_parameter_keywords_from_flowFrame) 
+
+# -- test that at least all but BS and MS are identical --
+ParameterValuesList_Restricted <- lapply(ParameterValuesList, function(DF){
+        DF <- DF[c("N", "R", "B", "E", "V", "G", "DISPLAY")]
+        rownames(DF) <- NULL
+        DF
+})
+
+if (length(unique(ParameterValuesList_Restricted))) {
+        
+        PrintList <- ParameterValuesList[[1]]
+} else {
+        PrintList <- ParameterValuesList
+}
+```
+
+```{r, echo = TRUE, message=FALSE}
+PrintList
+```
+
+
+
+## The parameters not directly related to the data channels
+
+```{r, echo = FALSE, message=FALSE}
+nonParameterValuesList <- lapply(fcsFileList, extract_all_non_parameter_keywords_from_flowFrame)
+
+# -- check that the length are equal (better would be to check that all Keywords are identical) --
+if(length(unique(vapply(nonParameterValuesList, nrow, numeric(1)))) == 1) {
+        nPV_DF <- do.call("cbind", nonParameterValuesList)
+        nPV_DF <- nPV_DF[, c(1, seq(2, ncol(nPV_DF), by = 2))]
+        
+} else {
+        nPV_DF <- NULL
+}
+```
+
+```{r, echo = TRUE, message=FALSE}
+knitr::kable(nPV_DF)
+```
+
+
+
+
+# Change the data into a flowSet object and extract more compact keyword info
+
+
+```{r, echo = FALSE, message=FALSE}
+fs <- as(fcsFileList, "flowSet")
+
+KeywordTable <- as.data.frame(keyword(fs, c("$TOT", "$PAR", "TUBE NAME", "THRESHOLD", "$DATE", "EXPORT TIME", "$BTIM", "$ETIM")))
+
+# change sample Names
+# flowWorkspace::sampleNames(fs) <- paste(Prefix, fs@phenoData@data$well, fs@phenoData@data$SRC, sep = "_")
+# 
+# rownames(KeywordTable) <- flowWorkspace::sampleNames(fs)
+
+KeywordTable$`$BTIM` <- hms(KeywordTable$`$BTIM`)
+KeywordTable$`$ETIM` <- hms(KeywordTable$`$ETIM`)
+KeywordTable$RecTimeSec <- as.numeric(as.duration(KeywordTable$`$ETIM`- KeywordTable$`$BTIM`), "seconds")
+```
+
+
+```{r, echo = TRUE, message=FALSE}
+knitr::kable(KeywordTable)
+```
+
+
+
+
+# Look at the Minimal values and steps (above 0) to understand thresholding and to possibly adjust area gates
+
+- again it seems that the thresholding is on the H here, definitely not on the areas
+
+
+```{r, echo = FALSE, message=FALSE}
+# Determine Minimum values of the different parameters in the different samples
+MatrixList <- lapply(1:length(fs), FUN = function(x){exprs(fs[[x]])})
+names(MatrixList) <- flowWorkspace::sampleNames(fs)
+Minimums <- t(sapply(MatrixList, function(x){apply(x, 2, min)}))
+# Minimums <- fsApply(fs, each_col, min)
+MinimumsAbove0 <- t(sapply(MatrixList, function(x){apply(x, 2, function(y) min(y[y>0]))}))
+# MinimumsAbove0 <- fsApply(fs, each_col, function(x){min(x[x>0])})
+
+
+BigDF <- as.data.frame(do.call("rbind", MatrixList))
+
+Discretized <- lapply(BigDF, function(x){head(sort(unique(x[x>0])), 10)})
+
+Discretized <- do.call("cbind", Discretized)
+```
+
+
+```{r, echo = FALSE, message=FALSE}
+# Determine Minimum values of the different parameters in the different samples
+Minimums
+MinimumsAbove0
+Discretized
+```
+
+
+
+# Gating
+
+
+
+## Transform flowSet object to GatingSet object
+
+```{r, echo = FALSE, message=FALSE}
+gs <- GatingSet(fs) # also GatingSets are S4 objects
+```
+
+
+
+## Gate 1: Area: Remove Events with negative FSC-A or SSC-A, i.e events that stay are: FSC-A > `r FSC.A.low` and < `r FSC.A.high`, SSC-A > `r SSC.A.low` and < `r SSC.A.high`.  
+
+- NB: Events with negative areas have either width or height = 0. 
+- In rare cases Area is however not < 0 when width is 0 but height is max (specifically SSC-W could be 0 for SSC-A not below 0). I would therefore add here FSC-H/W SSC-H/W 1 Inf gates, but still call it just area gate (**NB: later you might gate on higher FSC-H min values, the W gate here is silly since you use higher thresholds**). Remember, for areas above 0 the equation is area = width*height/2^16
+
+
+```{r, message = FALSE, warning = FALSE}
+Gate.Area <- rectangleGate(filterId = "Area", list("FSC-A" = c(FSC.A.low, FSC.A.high), "SSC-A" = c(SSC.A.low, SSC.A.high)))
+# add the gate to the gs
+add(gs, Gate.Area, parent = "root")
+# gate the data
+recompute(gs)
+
+gatingStats <- gs.Stats(gs)
+```
+
+
+```{r, echo = FALSE, message=FALSE}
+knitr::kable(gatingStats[[1]])
+knitr::kable(gatingStats[[2]])
+```
+
+
+### Density FSC-A SSC-A plots
+
+- Usually this is an easy first plot to distinguish electronic noise (buffer only) from cells
+
+
+```{r, echo = FALSE, message=FALSE}
+TrL <- FC.geom_hex(fs = getData(gs, "/Area"), x = "FSC-A", y = "SSC-A", bins = 250, co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10")
+
+```
+
+
+```{r, fig.width= 14, fig.height = 3.75*length(gs)/2, warning = FALSE, message = FALSE}
+do.call("grid.arrange", c(TrL, ncol = 2))
+```
+
+
+### Pacific Blue-A APC-A plots with gate polygon
+
+- Pacific Blue-A detects the DAPI gate
+- APC has fluorescence maximum above 660
+
+
+```{r, echo = FALSE, message=FALSE}
+
+TrL <- FC.geom_hex(fs = getData(gs, "/Area"), x = "Pacific Blue-A", y = "APC-A", bins = 250, co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10")
+
+# Poly <- data.frame(x = c(200, 30000, 30000, 7000), y = c(10, 10, 1000, 1000))
+TrL_Poly <- plotPolygon(TrL = TrL, polyDF = Poly)
+```
+
+
+```{r, fig.width= 14, fig.height = 3.75*length(gs)/2, warning = FALSE, message = FALSE}
+do.call("grid.arrange", c(TrL_Poly, ncol = 2))
+```
+
+
+
+## Gate 2: Polynomial gate on Pacific Blue-A APC-A plots
+
+- This gate is very similar to the Vandeputte et al gate!
+
+
+```{r, warning = FALSE, message = FALSE}
+matr <- as.matrix(Poly)
+colnames(matr) <- c("Pacific Blue-A", "APC-A")
+Gate.Poly <- polygonGate(matr, filterId = "Poly")
+# add the gate to the gs
+add(gs, Gate.Poly, parent = "/Area")
+# gate the data
+recompute(gs)
+
+gatingStats <- gs.Stats(gs)
+```
+
+
+```{r, echo = FALSE, message=FALSE}
+knitr::kable(gatingStats[[1]])
+knitr::kable(gatingStats[[2]])
+```
+
+
+### Density FSC-A SSC-A plots after the poly gate
+
+
+```{r, echo = FALSE, message=FALSE}
+TrL <- FC.geom_hex(fs = getData(gs, "/Area/Poly"), x = "FSC-A", y = "SSC-A", bins = 250, co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10")
+
+```
+
+
+```{r, fig.width= 14, fig.height = 3.75*length(gs)/2, warning = FALSE, message = FALSE}
+do.call("grid.arrange", c(TrL, ncol = 2))
+```
+
+
+
+## Gate Illustration
+
+```{r, message = FALSE, warning = FALSE}
+plot(gs)
+```
+
+
+
+
+# Generate a Result List
+
+```{r, message = FALSE, warning = FALSE}
+# - prepare a result DF -
+CountFreq <- gs.Stats(gs, gates = getNodes(gs), gatenames = c("Total", "Area", "Fluores"))
+
+res_DF <- cbind(KeywordTable, CountFreq[[1]])
+res_DF$PC_Area <- round(100*(res_DF$Area/res_DF$Total),2)
+res_DF$PC_Fluores <- round(100*(res_DF$Fluores/res_DF$Area),2)
+# --
+
+# - prepare the result list to save all important data -
+InputList <- list(functionpath = functionpath, function_file = function_file, datapath = datapath, 
+                  FSC.A.low = FSC.A.low, FSC.A.high = FSC.A.high, SSC.A.low = SSC.A.low,
+                  SSC.A.high = SSC.A.high, Poly = Poly, savepath = savepath, savename = savename)
+
+ValueDistributionList <- list(Minimums = Minimums, MinimumsAbove0 = MinimumsAbove0, Discretized = Discretized)
+
+resList <- list(InputList = InputList, res_DF = res_DF, CountFreq = CountFreq, ParameterValuesList = ParameterValuesList, nonParameterValuesList = nonParameterValuesList, KeywordTable = KeywordTable)
+# --
+```
+
+
+```{r, message = FALSE, warning = FALSE}
+knitr::kable(res_DF, digits = 2)
+```
+
+
+
+
+# Save the result list
+
+```{r, message = FALSE, warning = FALSE}
+if (!is.null(savepath)){
+        
+        if (is.null(savename)) {
+                
+                savename <- paste0(basename(datapath), "_results.rds")
+        }
+        
+        saveRDS(object = resList, file.path(savepath, savename))
+        
+}
+```
+
+
+
+
+
+
+
+
+
+

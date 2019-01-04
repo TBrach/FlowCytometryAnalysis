@@ -1,0 +1,171 @@
+---
+title: "Going through parts of the flowCore package to understand it"
+author: "Thorsten Brach"
+date: "2019/01/03"
+output: html_document
+---
+
+
+
+#  Load all required packages Packages
+
+- References: 
+    - the flowCore vignette just google and find the newest
+    - This course: [https://bioinformatics.ca/workshops/2013/flow-cytometry-data-analysis-using-r-2013]
+
+
+
+```{r, echo = FALSE, message=FALSE, include = FALSE}
+## flowCore:
+biocLite("BiocUpgrade")
+# source("https://bioconductor.org/biocLite.R")
+# biocLite("flowCore")
+library(flowCore); #packageVersion("flowCore")
+
+## ggcyto: for the gating set functions and some plot options
+# source("https://bioconductor.org/biocLite.R")
+# biocLite("ggcyto")
+library(ggcyto); #packageVersion("ggcyto")
+
+## ggplot2
+library(ggplot2); #packageVersion("ggplot2")
+
+## dplyr
+library(dplyr); #packageVersion("dplyr")
+
+## lubridate
+library(lubridate)
+
+## gridExtra for grid.arrange
+library(gridExtra)
+
+```
+
+
+
+# a flowFrame object
+
+- The basic unit is a flowFrame corresponding to a single fcs file, it is a S4 object
+    - the exprs slot contains the event data as a matrix
+    - the parameters slot contains the meta data as an AnnotatedDataFrame with meta data derived from an FCS
+file’s “$P¡n¿” keywords, which describe the detector and stain information
+
+- as shown below, I understand how to get to the event matrix in the flowFrame object
+- I wrote extract_parameter_keywords_from_flowFrame and extract_all_non_parameter_keywords_from_flowFrame that allow you to extract the meta data using the keyword function and present it in data frames
+
+```{r}
+# - define the path to the data you want to analyse -
+datapath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Data/20181129_TestExperiment_DTU"
+# --
+files <- list.files(datapath) 
+files <- files[grepl("*.fcs", files)]
+
+# - read the fcs file in -
+file1 <- read.FCS(filename = file.path(datapath, files[2]), transformation=FALSE) # NB: alter.names = TRUE would change FSC-A to FSC.A so you would not always have to use backticks
+# --
+
+# - explore the fcs file -
+isS4(file1) # it's an S4 object
+# with @ you see the slots exprs, parameters, and description
+head(file1@exprs) # shows you the events and what has been recorded
+dim(exprs(file1)) # 200000 events and 11 variables
+summary(file1) # quite nicely showing an overview of the variables
+
+# -- look at the meta information --
+names(file1) # basically just the column names
+featureNames(file1) # bascically also the colnames
+colnames(file1@exprs)
+colnames(file1)
+ADF <- file1@parameters
+class(ADF)
+dim(ADF) # so doesn't have that much informatoin
+# the keyword method has I guess all information
+KeywordList <- keyword(file1) # here 153 keywords
+names(KeywordList)
+# I wrote a little function to extract the keywords related to the parameters (the detectors)
+ParameterValues <- extract_parameter_keywords_from_flowFrame(flowFrame = file1, suffixVector = NULL)
+# and I also wrote a function to extract all non parameter keywords
+NonParamterValues <- extract_all_non_parameter_keywords_from_flowFrame(file1)
+# both functions produce a dataframe and can be extended hopefully with a flowSet object
+# ----
+```
+
+
+
+# a flowSet object
+
+- This class provides a mechanism for efficiently hosting the flowFrame objects with minimal copying, reducing memory requirements
+
+```{r}
+# - read several flowFrames into a list -
+datapath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Data/20181129_TestExperiment_DTU"
+files <- list.files(datapath) 
+files <- files[grepl("*.fcs", files)]
+
+fcsFileList <- lapply(file.path(datapath, files[c(2,4,6)]), read.FCS, transformation=FALSE)
+fcsFileList <- lapply(file.path(datapath, files), read.FCS, transformation=FALSE, column.pattern = "-W|-H", invert.pattern = TRUE) # NB: I needed to use the patterns here, since in some cases the -W and -H columns were not recorded, unfortunately it does not affect the P names, e.g. $P15 still exists in the ones with -H
+names(fcsFileList) <- files
+# --
+
+# - Einschub: analyse the keyword parameters from the list to compare -
+ParameterValuesList <- lapply(fcsFileList, extract_parameter_keywords_from_flowFrame) # if you look at this list, you see that these
+
+# -- test that at least all but BS and MS are identical --
+ParameterValuesList_Restricted <- lapply(ParameterValuesList, function(DF){
+        DF <- DF[c("N", "R", "B", "E", "V", "G", "DISPLAY")]
+        rownames(DF) <- NULL
+        DF
+})
+
+length(unique(ParameterValuesList_Restricted)) # if 1 all experiments had used the same settings, then print only 1 otherwise all
+# ----
+
+nonParameterValuesList <- lapply(fcsFileList, extract_all_non_parameter_keywords_from_flowFrame)
+
+# -- check that the length are equal (better would be to check that all Keywords are identical) --
+if(length(unique(vapply(nonParameterValuesList, nrow, numeric(1)))) == 1) {
+        nPV_DF <- do.call("cbind", nonParameterValuesList)
+        nPV_DF <- nPV_DF[, c(1, seq(2, ncol(nPV_DF), by = 2))]
+        
+} else {
+        nPV_DF <- NULL
+}
+# ----
+# --
+
+# - got to the flowSet object -
+fs <- as(fcsFileList, "flowSet")
+
+# fs has additional meta info that was not in the flowFrames
+fs@phenoData
+# you can add info here and learn the fsApply method:
+phenoData(fs)$Filename <- fsApply(fs,keyword, "$FIL")
+fs@phenoData
+class(fs@phenoData) # again an AnnotatedDataFrame
+# some convenience functions
+fsApply(fs, each_col, median)
+fsApply(fs, each_col, min)
+
+```
+
+- So clearly there is more info in the vignette, but I skip this now a bit to get to the parts that I might actually use
+
+
+
+# Gating
+
+
+- Like transformations, flowCore includes a number of built-in common flow cytometry gates. The
+simplest of these gates are the geometric gates
+- In addition, we introduce the notion of data-driven gates, or filters, not usually found in flow cytometry
+software. In these approaches, the necessary parameters are computed based on the properties
+of the underlying data, for instance by modelling data distribution or by density estimation
+- but I also skip this section because in the end it seems it just becomes the gating set option
+
+
+# Gating Set
+
+- for next time
+
+```{r}
+```
