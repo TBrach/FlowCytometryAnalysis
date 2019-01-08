@@ -1,5 +1,21 @@
 # --
 ################
+# pal #
+################
+# just to illustrate colors
+pal <- function(col, border = "light gray", ...){
+        n <- length(col)
+        plot(0, 0, type="n", xlim = c(0, 1), ylim = c(0, 1),
+             axes = FALSE, xlab = "", ylab = "", ...)
+        rect(0:(n-1)/n, 0, 1:n/n, 1, col = col, border = border)
+}
+# --
+
+
+
+
+# --
+################
 # extract_parameter_keywords_from_flowFrame
 ################
 # extracts the keyword values associated with the parameters and puts them in a data frame
@@ -175,7 +191,8 @@ gs.Stats <- function(gs, gates = getNodes(gs), gatenames = NULL) {
 ## Output: list with the Trellis objects 
 
 FC.geom_hex <- function(fs, x = "FSC-A", y = "SSC-A", co.fix = TRUE,
-                        xlimits = NULL, ylimits = NULL, trans = NULL, bins = 30, name = NULL){
+                        xlimits = NULL, ylimits = NULL, trans = NULL, bins = 150, name = NULL, colPalette = NULL,
+                        ncolors = 10){
         
         if (is.null(name)) {
                 name <- flowWorkspace::sampleNames(fs)
@@ -184,6 +201,10 @@ FC.geom_hex <- function(fs, x = "FSC-A", y = "SSC-A", co.fix = TRUE,
         if (is.numeric(name)) {
                 
                 name <- flowWorkspace::sampleNames(fs)[name]
+        }
+        
+        if (is.null(colPalette)) {
+                colPalette <- topo.colors
         }
         
         MatrixList <- lapply(name, function(current_name){exprs(fs[[current_name]])})
@@ -196,12 +217,24 @@ FC.geom_hex <- function(fs, x = "FSC-A", y = "SSC-A", co.fix = TRUE,
                 xnew <- make.names(x)
                 ynew <- make.names(y)
                 
+                # - decided to remove infinite values in case of transformation -
+                if(!is.null(trans)){
+                        
+                        cDF$transX <- match.fun(trans)(cDF[,xnew])
+                        cDF$transY <- match.fun(trans)(cDF[,ynew])
+                        # -- remove NA or infinite data --
+                        cDF <- dplyr::filter(cDF, is.finite(transX), is.finite(transY))
+                        # ----
+                }
+                
+                # --
+                
+                
                 Tr <- ggplot(cDF, aes_string(x = xnew, y = ynew)) +
                         geom_hex(bins = bins) +
                         xlab(x) +
                         ylab(y) +
-                        scale_fill_gradientn(colours = topo.colors(10)) +
-                        #scale_fill_gradient2(low = "blue", mid = "yellow", high = "red")+
+                        scale_fill_gradientn(colours = colPalette(n = ncolors)) +
                         theme_bw() +
                         ggtitle(paste("Sample:", names(MatrixList)[i], "; Events", nrow(cDF)))
                 
@@ -289,6 +322,216 @@ plotPolygon <- function(TrL, polyDF, Label = NULL, name = NULL, col = "red",
         
 }
 # --
+
+
+
+
+# --
+########################
+#### FC.geom_point
+########################
+# uses densCols function for the coloring, which unfortunately does not really allow a legend but is fast
+# see <http://r.789695.n4.nabble.com/Re-densCols-what-are-the-computed-densities-and-how-to-create-a-legend-td2020672.html>
+# or google densCols legend
+
+FC.geom_point <- function(fs, name = NULL, x = "FSC-A", y = "SSC-A", co.fix = TRUE,
+                          xlimits = NULL, ylimits = NULL, trans = NULL, pch = ".", colPalette = NULL, nbin = 200){
+        
+        
+        if (is.null(name)) {
+                
+                name <- flowWorkspace::sampleNames(fs)
+        }
+        
+        
+        if (is.numeric(name)) {
+                
+                name <- flowWorkspace::sampleNames(fs)[name]
+        }
+        
+        
+        if (is.null(colPalette)) {
+                colPalette <- topo.colors
+        }
+        
+        MatrixList <- lapply(name, function(current_name){exprs(fs[[current_name]])})
+        names(MatrixList) <- name
+        
+        
+        TrList <- lapply(seq_along(MatrixList), FUN = function(i){
+                
+                cDF <- as.data.frame(MatrixList[[i]])
+                colnames(cDF) <- make.names(colnames(cDF))
+                xnew <- make.names(x)
+                ynew <- make.names(y)
+                
+                if(!is.null(trans)){
+                        
+                        cDF$transX <- match.fun(trans)(cDF[,xnew])
+                        cDF$transY <- match.fun(trans)(cDF[,ynew])
+                        # - remove NA or infinite data -
+                        cDF <- dplyr::filter(cDF, is.finite(transX), is.finite(transY))
+                        # --
+                        col <- densCols(cDF[c("transX","transY")], colramp = colPalette, nbin = nbin)
+                        
+                } else {
+                        col <- densCols(cDF[c(xnew,ynew)], colramp = colPalette, nbin = nbin)
+                        #col <- densCols(f.exprs[, channels.new], colramp = colPalette)
+                }
+                
+                
+                Tr <- ggplot(cDF, aes_string(x = xnew, y = ynew))
+                Tr <- Tr +
+                        geom_point(pch = pch, colour = col) +
+                        xlab(x) +
+                        ylab(y) +
+                        theme_bw() +
+                        ggtitle(paste("Sample:", names(MatrixList)[i], "; Events", nrow(cDF)))
+                
+                if(!is.null(trans)){
+                        
+                        Tr <- Tr +
+                                scale_x_continuous(trans = trans, limits = xlimits) +
+                                scale_y_continuous(trans = trans, limits = ylimits)
+                        
+                } else {
+                        
+                        Tr <- Tr +
+                                scale_x_continuous(limits = xlimits) +
+                                scale_y_continuous(limits = ylimits)
+                }
+                
+                
+                if(co.fix){Tr <- Tr + coord_fixed()}
+                
+                
+                Tr
+                
+                
+                
+        })
+        
+}
+
+# --
+
+
+
+# --
+###############
+# get density #
+###############
+# from <https://slowkow.com/notes/ggplot2-color-by-density/>
+
+# Get density of points in 2 dimensions.
+# @param x A numeric vector.
+# @param y A numeric vector.
+# @param n Create a square n by n grid to compute density.
+# @return The density within each square.
+get_density <- function(x, y, ...) {
+        dens <- MASS::kde2d(x, y, ...)
+        ix <- findInterval(x, dens$x)
+        iy <- findInterval(y, dens$y)
+        ii <- cbind(ix, iy)
+        return(dens$z[ii])
+}
+# --
+
+
+
+
+# --
+########################
+#### FC.geom_point_kernel
+########################
+# https://slowkow.com/notes/ggplot2-color-by-density/
+# we use the 2D kernel density estimation function from the MASS R package to to color points by density in a plot created with ggplot2.
+# unfortunately a bit slow, but gives a legend! so therefore nicer than FC.geom_point
+
+
+FC.geom_point_kernel <- function(fs, name = NULL, x = "FSC-A", y = "SSC-A", co.fix = TRUE,
+                          xlimits = NULL, ylimits = NULL, trans = NULL, pch = ".", colPalette = NULL, nbin = 70, ncolors = 10){
+        
+        
+        if (is.null(name)) {
+                
+                name <- flowWorkspace::sampleNames(fs)
+        }
+        
+        
+        if (is.numeric(name)) {
+                
+                name <- flowWorkspace::sampleNames(fs)[name]
+        }
+        
+        
+        if (is.null(colPalette)) {
+                colPalette <- topo.colors
+        }
+        
+        MatrixList <- lapply(name, function(current_name){exprs(fs[[current_name]])})
+        names(MatrixList) <- name
+        
+        TrList <- lapply(seq_along(MatrixList), FUN = function(i){
+                
+                cDF <- as.data.frame(MatrixList[[i]])
+                colnames(cDF) <- make.names(colnames(cDF))
+                xnew <- make.names(x)
+                ynew <- make.names(y)
+                
+                if(!is.null(trans)){
+                        
+                        cDF$transX <- match.fun(trans)(cDF[,xnew])
+                        cDF$transY <- match.fun(trans)(cDF[,ynew])
+                        # - remove missing or infinite data -
+                        cDF <- dplyr::filter(cDF, is.finite(transX), is.finite(transY))
+                        # --
+                        cDF$Color <- get_density(x = cDF$transX, y = cDF$transY, n = nbin)
+                        
+                } else {
+                        cDF$Color <- get_density(x = cDF[[xnew]], y = cDF[[ynew]], n = nbin)
+                        #col <- densCols(f.exprs[, channels.new], colramp = colPalette)
+                }
+                
+                
+                Tr <- ggplot(cDF, aes_string(x = xnew, y = ynew, col = "Color"))
+                Tr <- Tr +
+                        geom_point(pch = pch) +
+                        xlab(x) +
+                        ylab(y) +
+                        # scale_color_viridis() +
+                        scale_color_gradientn("", colours = colPalette(n = ncolors)) + 
+                        theme_bw() +
+                        ggtitle(paste("Sample:", names(MatrixList)[i], "; Events", nrow(cDF)))
+                
+                if(!is.null(trans)){
+                        
+                        Tr <- Tr +
+                                scale_x_continuous(trans = trans, limits = xlimits) +
+                                scale_y_continuous(trans = trans, limits = ylimits)
+                        
+                } else {
+                        
+                        Tr <- Tr +
+                                scale_x_continuous(limits = xlimits) +
+                                scale_y_continuous(limits = ylimits)
+                }
+                
+                
+                if(co.fix){Tr <- Tr + coord_fixed()}
+                
+                
+                Tr
+                
+                
+                
+        })
+        
+}
+
+# --
+
+
 
 
 

@@ -17,7 +17,7 @@ output: html_document
 
 ```{r, echo = FALSE, message=FALSE, include = FALSE}
 ## flowCore:
-biocLite("BiocUpgrade")
+# biocLite("BiocUpgrade")
 # source("https://bioconductor.org/biocLite.R")
 # biocLite("flowCore")
 library(flowCore); #packageVersion("flowCore")
