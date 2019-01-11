@@ -1,7 +1,7 @@
 ---
 title: "Template evaluation of flow cytometry data for cell counting project"
 author: "Thorsten Brach"
-date: "2019/01/03"
+date: "2019/01/10"
 output: html_document
 ---
 
@@ -10,7 +10,7 @@ output: html_document
 
 # Possible improvements and own reminders
 
-- analyse counting beads with regard to average flow per second
+- maybe add FSC-H/W, SSC-H/W thresholds
 
 - FC.geom_hex with a high enough bin is just as good as FC.geom_point (no legend) and FC.geom_point_kernel. So I recommend geom_hex, it is easy and fast, but the point functions work fine two, I recommend kernel version but it is a bit slow.
     - NB: lines in the density plot make sense, since the data consists of discrete steps!
@@ -82,7 +82,7 @@ function_file <- "20190103_FlowCytometry_Functions.R"
 
 
 # - define the path to the data you want to analyse -
-datapath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Data/20190104_DTUExample"
+datapath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Data/20190110_LSRII_Test_BtoE"
 # --
 
 
@@ -95,12 +95,18 @@ SSC.A.high <- Inf
 # ----
 
 # -- for gating on Pacific Blue-A FSC-A --
-Poly <- data.frame(x = c(200, 15000, 15000, 2000, 400), y = c(200, 200, 7000, 7000, 800))
+Poly <- data.frame(x = c(100, 15000, 15000, 2000, 800, 200), y = c(100, 100, 25000, 25000, 7000, 800))
 # ----
 
 # -- for gating on PE-A FSC-A for the beads --
 Poly_Beads <- data.frame(x = c(20000, 260000, 260000, 20000), y = c(30000, 30000, 260000, 260000))
 # ----
+
+
+# -- for gating on PE-A Pacific Blue-A for the beads --
+Poly_Beads2 <- data.frame(x = c(20000, 260000, 260000, 20000), y = c(30000, 30000, 260000, 260000))
+# ----
+
 # --
 
 
@@ -113,10 +119,11 @@ bins <- 300 # defines how "fine" the FC.geom_hex plots will be, the higher the n
 # -- protocol volumes and concentrations
 muL_Buffer_per_mg_feces <- 10 # e.g. 10 when you add 1 ml to 100 mg feces
 muL_supernatant <- 200 # the amount of supernatant used after the slow spin, NB: not needed for calculation but record it anyway
-muL_Transfer1 <- 20
-muL_Buffer_Transfer1 <- 2980
-muL_Transfer2 <- 440
-muL_Stain <- 50 # used in Transfer 1
+muL_resuspension <- 1000 # after the second wash
+muL_Transfer1 <- 7
+muL_Buffer_Transfer1 <- 203
+muL_Transfer2 <- 170
+muL_Stain <- 20 # used in Transfer 1
 beads_concentration_permuL <- 1022 # in the bought bead tube
 beads_volume_muL <- 10 # added in Transfer 2
 # ----
@@ -153,8 +160,8 @@ source(file.path(functionpath, function_file))
 files <- list.files(datapath) 
 files <- files[grepl("*.fcs", files)]
 
-# fcsFileList <- lapply(file.path(datapath, files), read.FCS, transformation=FALSE)
-fcsFileList <- lapply(file.path(datapath, files), read.FCS, transformation=FALSE, column.pattern = "-W|-H", invert.pattern = TRUE) # NB: I needed to use the patterns here, since in some cases the -W and -H columns were not recorded, unfortunately it does not affect the P names, e.g. $P15 still exists in the ones with -H
+fcsFileList <- lapply(file.path(datapath, files), read.FCS, transformation=FALSE)
+# fcsFileList <- lapply(file.path(datapath, files), read.FCS, transformation=FALSE, column.pattern = "-W|-H", invert.pattern = TRUE) 
 names(fcsFileList) <- files
 ```
 
@@ -193,16 +200,25 @@ PrintList
 
 
 
-## The parameters not directly related to the data channels
+## The parameters not directly related to the data channels (and reordering samples by wells)
 
 ```{r, echo = FALSE, message=FALSE}
 nonParameterValuesList <- lapply(fcsFileList, extract_all_non_parameter_keywords_from_flowFrame)
+
+# - reorder based on the wells -
+WellIDs <- vapply(nonParameterValuesList, function(DF){DF$Value[DF$Keyword == "WELL ID"]}, character(1))
+
+fcsFileList <- fcsFileList[order(WellIDs)]
+# --
+
 
 # -- check that the length are equal (better would be to check that all Keywords are identical) --
 if(length(unique(vapply(nonParameterValuesList, nrow, numeric(1)))) == 1) {
         nPV_DF <- do.call("cbind", nonParameterValuesList)
         nPV_DF <- nPV_DF[, c(1, seq(2, ncol(nPV_DF), by = 2))]
-        
+        # -- reorder based on WellIDs --
+        nPV_DF <- dplyr::select(nPV_DF, Keword = 1, (order(WellIDs)+1))
+        # ----
 } else {
         nPV_DF <- NULL
 }
@@ -221,7 +237,11 @@ knitr::kable(nPV_DF, caption = "Table of non-parameter related keywords")
 ```{r, echo = FALSE, message=FALSE}
 fs <- as(fcsFileList, "flowSet")
 
+
 KeywordTable <- as.data.frame(keyword(fs, c("$TOT", "$PAR", "TUBE NAME", "THRESHOLD", "$DATE", "EXPORT TIME", "$BTIM", "$ETIM")))
+
+KeywordTable <- cbind(data.frame(Index = 1:nrow(KeywordTable), Sample = rownames(KeywordTable)), KeywordTable)
+rownames(KeywordTable) <- NULL
 
 # change sample Names
 # flowWorkspace::sampleNames(fs) <- paste(Prefix, fs@phenoData@data$well, fs@phenoData@data$SRC, sep = "_")
@@ -233,7 +253,8 @@ KeywordTable$`$ETIM` <- hms(KeywordTable$`$ETIM`)
 KeywordTable$RecTime_sec <- as.numeric(as.duration(KeywordTable$`$ETIM`- KeywordTable$`$BTIM`), "seconds")
 # - new add the run time from the exprs data -
 Maximums <- as.data.frame(fsApply(fs, each_col, max))
-KeywordTable$RunTime_sec <- Maximums$Time/100
+Minimums <- as.data.frame(fsApply(fs, each_col, min))
+KeywordTable$RunTime_sec <- (Maximums$Time - Minimums$Time)/100
 # --
 ```
 
@@ -254,8 +275,6 @@ knitr::kable(KeywordTable, caption = "summary of key keywords with running times
 # Determine Minimum values of the different parameters in the different samples
 MatrixList <- lapply(1:length(fs), FUN = function(x){exprs(fs[[x]])})
 names(MatrixList) <- flowWorkspace::sampleNames(fs)
-Minimums <- t(sapply(MatrixList, function(x){apply(x, 2, min)}))
-# Minimums <- fsApply(fs, each_col, min)
 MinimumsAbove0 <- t(sapply(MatrixList, function(x){apply(x, 2, function(y) min(y[y>0]))}))
 # MinimumsAbove0 <- fsApply(fs, each_col, function(x){min(x[x>0])})
 
@@ -299,7 +318,7 @@ gs <- GatingSet(fs) # also GatingSets are S4 objects
 - In rare cases Area is however not < 0 when width is 0 but height is max (specifically SSC-W could be 0 for SSC-A not below 0). I would therefore add here FSC-H/W SSC-H/W 1 Inf gates, but still call it just area gate (**NB: later you might gate on higher FSC-H min values, the W gate here is silly since you use higher thresholds**). Remember, for areas above 0 the equation is area = width*height/2^16
 
 
-```{r, message = FALSE, warning = FALSE}
+```{r, message = FALSE, warning = FALSE, warning=FALSE}
 Gate.Area <- rectangleGate(filterId = "Area", list("FSC-A" = c(FSC.A.low, FSC.A.high), "SSC-A" = c(SSC.A.low, SSC.A.high)))
 # add the gate to the gs
 add(gs, Gate.Area, parent = "root")
@@ -327,7 +346,7 @@ knitr::kable(gatingStats[[2]], caption = "after gate 1")
 - Pacific Blue-A detects the DAPI
 
 
-```{r, echo = FALSE, message=FALSE}
+```{r, echo = FALSE, message=FALSE, warning=FALSE}
 TrL <- FC.geom_hex(fs = getData(gs, "/Area"), x = "Pacific Blue-A", y = "FSC-A", bins = bins, co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10", colPalette = NULL, ncolors = 10)
 
 # - geom_point alternatives, are slower and with high enough bins FC.geom_hex contains almost all info -
@@ -338,7 +357,8 @@ TrL <- FC.geom_hex(fs = getData(gs, "/Area"), x = "Pacific Blue-A", y = "FSC-A",
 # # # ----
 # --
 
-#Poly <- data.frame(x = c(200, 15000, 15000, 2000, 400), y = c(200, 200, 7000, 7000, 800))
+#Poly <- data.frame(x = c(100, 15000, 15000, 2000, 800, 200), y = c(100, 100, 25000, 25000, 7000, 800))
+
 TrL_Poly <- plotPolygon(TrL = TrL, polyDF = Poly)
 ```
 
@@ -352,7 +372,7 @@ do.call("grid.arrange", c(TrL_Poly, ncol = 2))
 ### Apply gate 2
 
 
-```{r, warning = FALSE, message = FALSE}
+```{r, warning = FALSE, message = FALSE, warning=FALSE}
 matr <- as.matrix(Poly)
 colnames(matr) <- c("Pacific Blue-A", "FSC-A")
 Gate.Poly <- polygonGate(matr, filterId = "Cells")
@@ -378,7 +398,7 @@ knitr::kable(gatingStats[[2]], caption = "after gate 2")
 - **just showed that you could not get rid of the remaining buffer only values (but well with the used threshold there were anyway not many buffer only events)**
 
 ```{r, echo = FALSE, message=FALSE}
-# TrL <- FC.geom_hex(fs = getData(gs, "/Area/Poly"), x = "FSC-A", y = "SSC-A", bins = 40, co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10")
+# TrL <- FC.geom_hex(fs = getData(gs, "/Area/Cells"), x = "FSC-A", y = "SSC-A", bins = bins, co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10")
 
 ```
 
@@ -398,9 +418,12 @@ knitr::kable(gatingStats[[2]], caption = "after gate 2")
 - PE-A detects the beads
 
 
-```{r, echo = FALSE, message=FALSE}
+```{r, echo = FALSE, message=FALSE, warning=FALSE}
 
 TrL <- FC.geom_hex(fs = getData(gs, "/Area"), x = "PE-A", y = "FSC-A", bins = bins, co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10", colPalette = NULL, ncolors = 10)
+
+
+#TrL <- FC.geom_hex(fs = getData(gs, "/Area"), x = "PE-A", y = "Pacific Blue-A", bins = bins, co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10", colPalette = NULL, ncolors = 10)
 
 # - geom_point alternatives, are slower and with high enough bins FC.geom_hex contains almost all info -
 # TrL_p <- FC.geom_point(fs = getData(gs, "/Area"), x = "PE-A", y = "FSC-A", pch = ".", co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10", nbin = 150)
@@ -410,6 +433,7 @@ TrL <- FC.geom_hex(fs = getData(gs, "/Area"), x = "PE-A", y = "FSC-A", bins = bi
 # # ----
 # --
 
+# Poly_Beads <- data.frame(x = c(20000, 260000, 260000, 20000), y = c(30000, 30000, 220000, 220000))
 
 TrL_Poly <- plotPolygon(TrL = TrL, polyDF = Poly_Beads)
 ```
@@ -444,6 +468,67 @@ knitr::kable(gatingStats[[2]], caption = "after gate 3")
 
 
 
+
+## Gate 4: Polynomial/Rectangular gate on PE-A Pacific Blue-A
+
+
+
+### PE-A Pacific Blue-A plots with polygon
+
+- PE-A detects the beads
+
+
+```{r, echo = FALSE, message=FALSE, warning = FALSE}
+
+TrL <- FC.geom_hex(fs = getData(gs, "/Area"), x = "PE-A", y = "Pacific Blue-A", bins = bins, co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10", colPalette = NULL, ncolors = 10)
+
+
+#TrL <- FC.geom_hex(fs = getData(gs, "/Area"), x = "PE-A", y = "Pacific Blue-A", bins = bins, co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10", colPalette = NULL, ncolors = 10)
+
+# - geom_point alternatives, are slower and with high enough bins FC.geom_hex contains almost all info -
+# TrL_p <- FC.geom_point(fs = getData(gs, "/Area"), x = "PE-A", y = "FSC-A", pch = ".", co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10", nbin = 150)
+# 
+# # -- even slower but with legend, so I prefer this point alternative --
+# TrL_p <- FC.geom_point_kernel(fs = getData(gs, "/Area"), x = "PE-A", y = "FSC-A", pch = ".", co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10", colPalette = viridis, nbin = 70, ncolors = 10)
+# # ----
+# --
+
+# Poly_Beads2 <- data.frame(x = c(20000, 260000, 260000, 20000), y = c(30000, 30000, 220000, 220000))
+
+TrL_Poly <- plotPolygon(TrL = TrL, polyDF = Poly_Beads2)
+```
+
+
+```{r, fig.width= 14, fig.height = 3.75*length(gs)/2, warning = FALSE, message = FALSE}
+do.call("grid.arrange", c(TrL_Poly, ncol = 2))
+```
+
+
+
+### Apply gate 4
+
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+matr <- as.matrix(Poly_Beads)
+colnames(matr) <- c("PE-A", "Pacific Blue-A")
+Gate.Poly <- polygonGate(matr, filterId = "Beads2")
+# add the gate to the gs
+add(gs, Gate.Poly, parent = "/Area")
+# gate the data
+recompute(gs)
+
+gatingStats <- gs.Stats(gs)
+```
+
+
+```{r, echo = FALSE, message=FALSE}
+knitr::kable(gatingStats[[1]], caption = "after gate 4")
+knitr::kable(gatingStats[[2]], caption = "after gate 4")
+```
+
+
+
+
 ## Gate Illustration
 
 ```{r, echo = FALSE, message = FALSE, warning = FALSE}
@@ -453,13 +538,13 @@ plot(gs)
 
 
 
-# Illustrate the flow and the arrival of the beads
+# Illustrate the flow and the arrival of the beads (based on gate 3)
 
 
 - simple plots illustrating how the number of events changed over time. If the flow was smooth one would expect these curves to be smooth
 
 
-```{r, echo = FALSE, warning = FALSE, message = FALSE}
+```{r, echo = FALSE, warning = FALSE, message = FALSE, warning = FALSE}
 # remember fs is still the completely original flowSet, i.e. fs <- getData(gs, "/root")
 fs_beads <- getData(gs, "/Area/Beads")
 MatrixList_Beads <- lapply(1:length(fs_beads), FUN = function(x){exprs(fs_beads[[x]])})
@@ -633,11 +718,12 @@ do.call("grid.arrange", c(TrLL, ncol = 2))
 # - prepare a result DF -
 CountFreq <- gs.Stats(gs, gates = getNodes(gs))
 res_DF <- cbind(KeywordTable, CountFreq[[1]])
-res_DF <- cbind(Sample = rownames(res_DF), res_DF)
 
 
 # -- add all the protocol inputs NB: Here the code strictly depends on your input--
-res_DF <- dplyr::mutate(res_DF, muL_Buffer_per_mg_feces = muL_Buffer_per_mg_feces, muL_Transfer1 = muL_Transfer1,
+res_DF <- dplyr::mutate(res_DF, Beads_av = (Beads + Beads2)/2, 
+                        muL_Buffer_per_mg_feces = muL_Buffer_per_mg_feces, muL_supernatant = muL_supernatant,
+                        muL_resuspension = muL_resuspension,  muL_Transfer1 = muL_Transfer1,
                         muL_Buffer_Transfer1 = muL_Buffer_Transfer1, muL_Transfer2 = muL_Transfer2,
                         muL_Stain = muL_Stain, beads_conc_permuL = beads_concentration_permuL, 
                         beads_vol_muL = beads_volume_muL, sample_vol_muL = muL_Transfer2 + muL_Stain + beads_volume_muL)
@@ -646,32 +732,40 @@ res_DF <- dplyr::mutate(res_DF, muL_Buffer_per_mg_feces = muL_Buffer_per_mg_fece
 # -- calculate beads_per_muL in the flow --
 res_DF <- dplyr::mutate(res_DF, beads_per_muL_flow = beads_conc_permuL*beads_vol_muL/sample_vol_muL)
 # ----
-# -- calculate run_volume_muL and Cells_per_muL_flow --
-res_DF <- dplyr::mutate(res_DF, run_volume_muL = Beads/beads_per_muL_flow, Cells_per_muL_flow = Cells/run_volume_muL)
+# -- calculate run_volume_muL, flow-rates, and Cells_per_muL_flow --
+res_DF <- dplyr::mutate(res_DF, run_volume_muL = Beads_av/beads_per_muL_flow, set_flow_rate_muL_s = set_flow_rate_muL_s, run_volume_muL_FR = RunTime_sec*set_flow_rate_muL_s, flow_muL_per_sec_from_beads = run_volume_muL/RunTime_sec,
+                        bead_slopes = bead_r2_slopes$slope,
+                        flow_muL_per_sec_from_bead_slopes = bead_slopes/beads_per_muL_flow,
+                        Cells_per_muL_flow = Cells/run_volume_muL,
+                        Cells_per_muL_flow_FR = Cells/run_volume_muL_FR)
 # ----
+
+
 # -- Calculate dilution factors --
 
 res_DF <- dplyr::mutate(res_DF, DilFac_Transfer2 = (muL_Transfer2 + muL_Stain + beads_vol_muL)/muL_Transfer2,
                         DilFac_Transfer1 = (muL_Transfer1 + muL_Buffer_Transfer1)/muL_Transfer1,
-                        Cells_per_muL_undiluted = Cells_per_muL_flow * DilFac_Transfer1 * DilFac_Transfer2,
+                        DilFac_Transfer0 = muL_resuspension/muL_supernatant,
+                        Cells_per_muL_undiluted = Cells_per_muL_flow * DilFac_Transfer0 * DilFac_Transfer1 * DilFac_Transfer2,
+                        Cells_per_muL_undiluted_FR = Cells_per_muL_flow_FR * DilFac_Transfer0 * DilFac_Transfer1 * DilFac_Transfer2,
                         Cells_per_mg_feces = Cells_per_muL_undiluted * muL_Buffer_per_mg_feces,
-                        Cells_per_g_feces = Cells_per_mg_feces * 1000)   
+                        Cells_per_mg_feces_FR = Cells_per_muL_undiluted_FR * muL_Buffer_per_mg_feces,
+                        Cells_per_g_feces = Cells_per_mg_feces * 1000,
+                        Cells_per_g_feces_FR = Cells_per_mg_feces_FR * 1000,
+                        Cells_per_g_feces_e10 = round(Cells_per_g_feces/1e10, 3),
+                        Cells_per_g_feces_e10_FR = round(Cells_per_g_feces_FR/1e10,3))   
 # ----
 # --
+res_DF_selected <- dplyr::select(res_DF, Sample, `$TOT`, THRESHOLD, RunTime_sec, Cells, Beads_av, Cells_per_g_feces_e10, Cells_per_g_feces_e10_FR)
 ```
 
 
 
-## Check the consistency of the flow rates derived from the beads, add to result DF (Alternative volume determination)
+## Check the consistency of the flow rates derived from the beads (how much do we trust their volume detection)
 
 ```{r, echo = FALSE, message = FALSE, warning = FALSE}
-# - add flow rates to result DF -
-res_DF <- dplyr::mutate(res_DF, flow_muL_per_sec_from_beads = run_volume_muL/RunTime_sec, 
-                        bead_slopes = bead_r2_slopes$slope,
-                        flow_muL_per_sec_from_bead_slopes = bead_slopes/beads_per_muL_flow)  
-# --
-
 # - plot the flow rates -
+res_DF$Sample <- factor(res_DF$Sample, levels = res_DF$Sample, ordered = T) # for the plot below
 plotDF <- dplyr::select(res_DF, Sample, flow_muL_per_sec_from_beads, flow_muL_per_sec_from_bead_slopes)
 mean_slopes <- mean(plotDF$flow_muL_per_sec_from_bead_slopes)
 mean_counts <- mean(plotDF$flow_muL_per_sec_from_beads)
@@ -679,6 +773,7 @@ plotDF <- tidyr::gather(plotDF, key = "type", value = "value", -Sample)
 plotDF$type <- factor(plotDF$type, levels <- unique(plotDF$type), ordered = T)
 col_values <- viridis(2)
 names(col_values) <- levels(plotDF$type)
+
 Tr <- ggplot(plotDF, aes(x = Sample, y = value, col = type))
 Tr <- Tr +
         geom_hline(yintercept = set_flow_rate_muL_s) +
@@ -702,6 +797,15 @@ Tr
 ```
 
 
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+knitr::kable(res_DF, digits = 2, caption = "the final result data frame")
+```
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+knitr::kable(res_DF_selected, digits = 3, caption = "the final result data frame")
+```
+
+
 
 
 # Generate a Result List for saving
@@ -711,8 +815,11 @@ Tr
 InputList <- list(functionpath = functionpath, function_file = function_file, datapath = datapath, 
                   FSC.A.low = FSC.A.low, FSC.A.high = FSC.A.high, SSC.A.low = SSC.A.low,
                   SSC.A.high = SSC.A.high, Poly = Poly, Poly_Beads = Poly_Beads,
+                  Poly_Beads2 = Poly_Beads2,
                   bins = bins, muL_Buffer_per_mg_feces = muL_Buffer_per_mg_feces,
-                  muL_supernatant = muL_supernatant, muL_Transfer1 = muL_Transfer1,
+                  muL_supernatant = muL_supernatant, 
+                  muL_resuspension = muL_resuspension,
+                  muL_Transfer1 = muL_Transfer1,
                   muL_Buffer_Transfer1 = muL_Buffer_Transfer1,
                   muL_Transfer2 = muL_Transfer2, 
                   muL_Stain = muL_Stain,
@@ -726,11 +833,6 @@ ValueDistributionList <- list(Minimums = Minimums, MinimumsAbove0 = MinimumsAbov
 
 resList <- list(InputList = InputList, res_DF = res_DF, CountFreq = CountFreq, ParameterValuesList = ParameterValuesList, nonParameterValuesList = nonParameterValuesList, KeywordTable = KeywordTable)
 # --
-```
-
-
-```{r, echo = FALSE, message = FALSE, warning = FALSE}
-knitr::kable(res_DF, digits = 2, caption = "the final result data frame")
 ```
 
 
