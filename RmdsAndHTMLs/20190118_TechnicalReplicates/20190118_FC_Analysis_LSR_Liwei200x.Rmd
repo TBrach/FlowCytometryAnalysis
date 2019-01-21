@@ -82,7 +82,7 @@ function_file <- "20190103_FlowCytometry_Functions.R"
 
 
 # - define the path to the data you want to analyse -
-datapath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Data/20190118_SandraPlate_200x"
+datapath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Data/20190118_TestLiwei_200x"
 # --
 
 

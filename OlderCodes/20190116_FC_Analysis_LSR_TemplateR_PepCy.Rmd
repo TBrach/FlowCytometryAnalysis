@@ -82,7 +82,7 @@ function_file <- "20190103_FlowCytometry_Functions.R"
 
 
 # - define the path to the data you want to analyse -
-datapath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Data/20190118_SandraPlate_200x"
+datapath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Data/20190115_SandraPlate_GtoH"
 # --
 
 
@@ -95,7 +95,7 @@ SSC.A.high <- Inf
 # ----
 
 # -- for gating on Pacific Blue-A FSC-A --
-Poly <- data.frame(x = c(100, 15000, 15000, 2000, 800, 200), y = c(100, 100, 25000, 25000, 7000, 800))
+Poly <- data.frame(x = c(600, 100000, 100000, 8000, 600), y = c(10, 10, 3000, 3000,100))
 # ----
 
 # -- for gating on PE-A FSC-A for the beads --
@@ -119,8 +119,8 @@ bins <- 300 # defines how "fine" the FC.geom_hex plots will be, the higher the n
 muL_Buffer_per_mg_feces <- 10 # e.g. 10 when you add 1 ml to 100 mg feces
 muL_supernatant <- 150 # the amount of supernatant used after the slow spin, NB: not needed for calculation but record it anyway
 muL_resuspension <- 1500 # after the second wash
-muL_Transfer1 <- 50
-muL_Buffer_Transfer1 <- 950
+muL_Transfer1 <- 40
+muL_Buffer_Transfer1 <- 1560
 muL_Transfer2 <- 170
 muL_Stain <- 20 # used in Transfer 1
 beads_concentration_permuL <- 1022 # in the bought bead tube
@@ -134,7 +134,7 @@ set_flow_rate_muL_s <- 0.5
 
 
 # - inputs for saving the data -
-savepath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Result_rds_files"
+savepath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Results"
 savename <- NULL
 # --
 ```
@@ -344,13 +344,13 @@ knitr::kable(gatingStats[[2]], caption = "after gate 1")
 
 
 
-### Pacific Blue-A FSC-A plots with polygon
+### Pacific Blue-A PerCP-Cy5-5-A plots with polygon
 
 - Pacific Blue-A detects the DAPI
 
 
 ```{r, echo = FALSE, message=FALSE, warning=FALSE}
-TrL <- FC.geom_hex(fs = getData(gs, "/Area"), x = "Pacific Blue-A", y = "FSC-A", bins = bins, co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10", colPalette = NULL, ncolors = 10)
+TrL <- FC.geom_hex(fs = getData(gs, "/Area"), x = "Pacific Blue-A", y = "PerCP-Cy5-5-A", bins = bins, co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10", colPalette = NULL, ncolors = 10)
 
 # - geom_point alternatives, are slower and with high enough bins FC.geom_hex contains almost all info -
 # TrL_p <- FC.geom_point(fs = getData(gs, "/Area"), x = "Pacific Blue-A", y = "FSC-A", pch = ".", co.fix = TRUE, xlimits = c(0.1, 300000), ylimits = c(.1,300000), trans = "log10", nbin = 150)
@@ -360,7 +360,7 @@ TrL <- FC.geom_hex(fs = getData(gs, "/Area"), x = "Pacific Blue-A", y = "FSC-A",
 # # # ----
 # --
 
-#Poly <- data.frame(x = c(100, 15000, 15000, 2000, 800, 200), y = c(100, 100, 25000, 25000, 7000, 800))
+#Poly <- data.frame(x = c(600, 100000, 100000, 8000, 600), y = c(10, 10, 3000, 3000,100))
 
 TrL_Poly <- plotPolygon(TrL = TrL, polyDF = Poly)
 ```
@@ -377,7 +377,7 @@ do.call("grid.arrange", c(TrL_Poly, ncol = 2))
 
 ```{r, warning = FALSE, message = FALSE, warning=FALSE}
 matr <- as.matrix(Poly)
-colnames(matr) <- c("Pacific Blue-A", "FSC-A")
+colnames(matr) <- c("Pacific Blue-A", "PerCP-Cy5-5-A")
 Gate.Poly <- polygonGate(matr, filterId = "Cells")
 # add the gate to the gs
 add(gs, Gate.Poly, parent = "/Area")
@@ -391,21 +391,6 @@ gatingStats <- gs.Stats(gs)
 ```{r, echo = FALSE, message=FALSE}
 knitr::kable(gatingStats[[1]], caption = "after gate 2")
 knitr::kable(gatingStats[[2]], caption = "after gate 2")
-
-# - saving some of the Tr_Polys for the talk -
-# I want Indexes: 8 buffer only, 21, 3
-# Indexes <- c(8, 3, 21)
-# TrL_Sel <- TrL_Poly[Indexes]
-# Label <- paste0(c(4.1, 0.06, 80.8), "%")
-# LabelPosition <- c(70000, 20000, 5)
-# Titles <- c("Buffer only, Events: 2935", "Sample P4 unstained, Events: 77222", "Sample P4 stained, Events: 93065")
-# TrL_Sel_Lab <- lapply(1:length(TrL_Sel), function(i){TrL_Sel[[i]] + annotate("text", label = Label[i], x = LabelPosition[1], y = LabelPosition[2], colour="red", size = LabelPosition[3]) + ggtitle(Titles[i])})
-# 
-# pdf(file = "Buffer_only.pdf", width = 5, height = 5)
-# TrL_Sel_Lab[[1]]
-# dev.off()
-
-# ---
 ```
 
 
@@ -819,8 +804,6 @@ res_DF_selected <- dplyr::select(res_DF, Index, Sample, `$TOT`, THRESHOLD, RunTi
                                  flow_muL_per_sec_from_beads, Cells, Beads_av, Cells_per_mL_flow,
                                  Cells_per_mL_flow_FR, DilFac_Total, 
                                  Cells_per_g_feces:Warning_Flow)
-
-res_DF_selected2 <- dplyr::select(res_DF_selected, Index:Events_per_sec, Cells_per_g_feces_e10:Cells_per_g_feces_mean_e10)
 ```
 
 
@@ -848,20 +831,7 @@ Tr <- Tr +
         # facet_wrap(. ~ type) +
         xlab("") +
         ylab("flow rate [muL per s]") +
-        theme_bw() +
-        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) 
-# --
-
-# - for saving the plot - 
-# Tr <- Tr +
-#         scale_y_continuous(limits = c(0, 0.57), breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5))
-# pdf("bead_flow.pdf", width = 7, height = 5.5)
-# Tr
-# dev.off()
-# 
-# pdf("flow_rate_P4_Beads.pdf", width = 7, height = 5)
-# TrLL[[42]] + ggtitle("Sample P4 stained Beads, r2: 0.998, slope = 23.5 beads/s") + theme_bw()
-# dev.off()
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 # --
 
 ```
@@ -880,10 +850,6 @@ knitr::kable(res_DF, digits = 2, caption = "the final result data frame")
 
 ```{r, echo = FALSE, message = FALSE, warning = FALSE}
 knitr::kable(res_DF_selected, digits = 3, caption = "the final result data frame")
-```
-
-```{r, echo = FALSE, message = FALSE, warning = FALSE}
-knitr::kable(res_DF_selected2, digits = 3, caption = "the final result data frame")
 ```
 
 

@@ -1,3 +1,13 @@
+# - define cbPalette and QuantColors15 schemes -
+# R color blind palette is used for group comparisons (unless more than 8 groups)
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # ref: http://www.cookbook-r.com/Graphs/Colors_(ggplot2)/
+# QuantColors15 is used for phyla comparisons as long as there are < 15 phyla, each color is easy to distinguish from the two colors surrounding it
+tol15rainbow=c("#114477", "#4477AA", "#77AADD", "#117755", "#44AA88", "#99CCBB", "#777711", "#AAAA44", "#DDDD77", "#771111", "#AA4444", "#DD7777", "#771144", "#AA4477", "#DD77AA") # ref: https://tradeblotter.wordpress.com/2013/02/28/the-paul-tol-21-color-salute/
+QuantColors15 <- tol15rainbow[c(1, 12, 4, 7, 13, 2, 11, 5, 8, 14, 3, 10, 6, 9, 15)]
+# --
+
+
+
 # --
 ################
 # pal #
