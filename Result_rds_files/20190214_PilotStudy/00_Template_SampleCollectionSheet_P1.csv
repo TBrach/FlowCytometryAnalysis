@@ -1,0 +1,5 @@
+ID;Date;Time;Timepoint;Bristol Score;TimeUntilFreeze_min;Time_in_Home_Freezer;Date_Minus80;Time_Minus80;Comments
+1;10/07/2018;07.00;t1;5;5;60;10/07/2018;08.45;ca 40 min transport time
+1;12/07/2018;06.45;t2;4;5;60;12/07/2018;08.10;ca 20 min transport time
+1;14/07/2018;07.20;t3;5;5;60;14/07/2018;08.45;ca 20 min transport time
+1;17/07/2018;06.45;t4;5;5;60;17/07/2018;08.45;ca 40 min transport time
