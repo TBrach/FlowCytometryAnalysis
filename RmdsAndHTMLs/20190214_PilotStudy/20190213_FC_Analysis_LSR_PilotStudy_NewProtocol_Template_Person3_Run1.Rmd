@@ -13,7 +13,7 @@ output: html_document
 - The calculation how it is implemented currently:
     - The gating gives you the Cells and the Beads in the run of each sample
     - The run_volume_muL you get from both the run_time and set flow rate, as well as from the counted beads and the bead concentration
-    - From that follows: cells_per_muL_flow both from the beads (average of two bead gates) and the set flow rate
+    - >> cells_per_muL_flow both from the beads (average of two bead gates) and the set flow rate
     - The correctness of the calculation is easier to understand like this:
         - multiply cells_per_muL_flow with DilFac_5*DilFac_4*DilFac_3*DilFac_2: This gives the cells_per_muL_In_homogenized_tube
         - multiply cells_per_muL_In_homogenized_tube * DilFac_1 to get cells_per_mg_feces, and then with 1000 to get Cells_per_g_feces
@@ -105,7 +105,7 @@ function_file <- "20190103_FlowCytometry_Functions.R"
 
 
 # - define the path to the data you want to analyse -
-datapath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Data/20190215_PilotStudy_Person4//"
+datapath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Data/20190215_PilotStudy_Person3_Run1/"
 # --
 
 
@@ -876,11 +876,13 @@ Tr <- Tr +
 
 # - for saving the plot - 
 # Tr <- Tr +
-#         scale_y_continuous(limits = c(0, 0.65), breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6)) +
-#         ggtitle("Person 4_Run_20190215") +
-#         theme(legend.position = "top")
-# pdf("bead_flow_Person4.pdf", width = 7, height = 5.5)
+#         scale_y_continuous(limits = c(0, 0.57), breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5))
+# pdf("bead_flow.pdf", width = 7, height = 5.5)
 # Tr
+# dev.off()
+# 
+# pdf("flow_rate_P4_Beads.pdf", width = 7, height = 5)
+# TrLL[[42]] + ggtitle("Sample P4 stained Beads, r2: 0.998, slope = 23.5 beads/s") + theme_bw()
 # dev.off()
 # --
 

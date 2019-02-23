@@ -105,7 +105,7 @@ function_file <- "20190103_FlowCytometry_Functions.R"
 
 
 # - define the path to the data you want to analyse -
-datapath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Data/20190215_PilotStudy_Person4//"
+datapath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/Data/20190222_DIRECT_Plate01/"
 # --
 
 
@@ -142,8 +142,8 @@ bins <- 300 # defines how "fine" the FC.geom_hex plots will be, the higher the n
 muL_Buffer_per_mg_feces <- 15 # e.g. 10 when you add 1 ml to 100 mg feces
 muL_Transfer1 <- 300
 muL_Buffer_Transfer1 <- 2700
-muL_Transfer2 <- 300
-muL_Buffer_Transfer2 <- 600
+muL_Transfer2 <- 250
+muL_Buffer_Transfer2 <- 750
 muL_Transfer3 <- 300
 muL_Buffer_Transfer3 <- 600
 muL_Transfer4 <- 170
@@ -936,7 +936,9 @@ InputList <- list(functionpath = functionpath,
                   beads_volume_muL = beads_volume_muL,
                   beads_concentration_permuL = beads_concentration_permuL,
                   set_flow_rate_muL_s = set_flow_rate_muL_s,
-                  savepath = savepath, savename = savename)
+                  savepath = savepath, 
+                  savename = savename,
+                  analysis_date = now())
 
 
 ValueDistributionList <- list(Minimums = Minimums, MinimumsAbove0 = MinimumsAbove0, Maximums = Maximums, Discretized = Discretized)

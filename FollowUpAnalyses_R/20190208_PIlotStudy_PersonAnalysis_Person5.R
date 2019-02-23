@@ -125,7 +125,7 @@ Tr <- Tr +
         ylab("Cells [per g feces] (Volume from beads)") 
 
 
-# pdf(file = "Person5_TimePoint_Plot_VolumeFromBeads.pdf", width = 6, height = 4.5)
+# pdf(file = "TimePoint_Plot_VolumeFromBeads_Person5.pdf", width = 6, height = 4.5)
 # Tr
 # dev.off()
 # --
@@ -146,7 +146,7 @@ Tr <- Tr +
         ylab("Cells [per g feces] (Volume from set flow rate)") 
 
 
-# pdf(file = "Person5_TimePoint_Plot_VolumeFromFR.pdf", width = 6, height = 4.5)
+# pdf(file = "TimePoint_Plot_VolumeFromFR_Person5.pdf", width = 6, height = 4.5)
 # Tr
 # dev.off()
 # --
@@ -197,8 +197,15 @@ Tr <- Tr +
         ylab("Cells [per g feces] (Volume from set flow rate)") 
 
 
+
+# - save the control data to compare between the runs -
+DF_control <- dplyr::filter(dplyr::select(DF, Timepoint:`EXPORT TIME`, RecTime_sec:ExperimentDate), Person == "Control")
+DF_control$FromPerson <- Person
+# --
+
+
 # - Save the data -
-resList <- list(DF_Plot = DF_Plot, DF_Plot_summary = DF_Plot_summary, DF_Plot_summary_summary = DF_Plot_summary_summary)
+resList <- list(DF_Plot = DF_Plot, DF_Plot_summary = DF_Plot_summary, DF_Plot_summary_summary = DF_Plot_summary_summary, DF_control = DF_control)
 
 savename <- paste0(as.Date(now()), "_CountAnalysis_", Person, ".rds")
 
