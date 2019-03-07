@@ -1,0 +1,115 @@
+# Check the control aliquots on the plates of the different persons
+
+
+## Load functions and set colors
+<!-- all lines where user user input is required or possible are marked with NB: USER INPUT and NB: user input, respectively -->
+
+
+```{r, echo = FALSE, message=FALSE}
+# - source all functions -
+functionpath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/PILOT_Study/Functions_FC/"
+function_file <- "20190103_FlowCytometry_Functions.R"
+source(file.path(functionpath, function_file))
+# --
+
+# - for ggpubr -
+symnum.args = list(cutpoints = c(0, 1e-04, 0.001, 0.01, 0.05, 1), symbols = c("****", "***", "**", "*", "ns"))
+# -- 
+
+# - Set Colors -
+aliquot_colors <- QuantColors15[1:3]
+names(aliquot_colors) <- c("Aliquot 1", "Aliquot 2", "Aliquot 3")
+
+experimentor_shapes <- c(16, 17)
+names(experimentor_shapes) <- c("Liwei", "Sandra")
+
+# person_colors <- c(cbPalette[2:4], cbPalette[7:8])
+# names(person_colors) <- levels(DF$Person)
+thaw_colors <- c("#d3d3d3", cbPalette[1])
+names(thaw_colors) <- c("FT", "ST")
+
+
+person_colors <- QuantColors15[1:5]
+names(person_colors) <- c("P1", "P2", "P3", "P4", "P5")
+# --
+```
+
+
+
+## Load the data in
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE}
+datapath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/PILOT_Study/PILOT_AfterFlow_Analysis_FInalCounts/Input_Data/Person_Count_rds/"
+files <- list.files(datapath)
+files <- files[grepl(pattern = "CountAnalysis", files)]
+
+resDFs <- list()
+
+for (i in 1:length(files)){
+        resList <- readRDS(file.path(datapath, files[i]))
+        resDFs[[i]] <- resList[["DF_control"]]
+}
+
+# -- restrict to shared columns since Person 5 was made with a different protocol: USE Reduce!! --
+colnamesList <- lapply(resDFs, colnames)
+keepColnames <- Reduce(intersect, colnamesList)
+# ----
+
+resDFs <- lapply(resDFs, dplyr::select, keepColnames)
+
+DFControls <- do.call("rbind", resDFs)
+
+DFControls <- dplyr::filter(DFControls, Stain == "stained")
+```
+
+
+
+## Plot the Cells_per_g_feces_FR values of the control aliquots that were used on the different dates
+
+
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+Tr <- ggplot(DFControls, aes(x = FromPerson, y = Cells_per_g_feces_FR))
+Tr <- Tr +
+        geom_boxplot(outlier.color = NA) +
+        geom_jitter(aes(col = Aliquot, shape = Experimentor), width = 0.2, height = 0, size = 3) +
+        theme_bw() +
+        scale_color_manual("", values = aliquot_colors) +
+        scale_shape_manual("", values = experimentor_shapes) +
+        scale_y_continuous(limits = c(0, max(DFControls$Cells_per_g_feces_FR))) +
+        xlab("") +
+        ylab("Cells [per g feces] (Volume from set flow rate)")
+
+
+
+Tr1 <- ggplot(DFControls, aes(x = Events_slope, y = Cells_per_g_feces_FR))
+Tr1 <- Tr1 +
+        geom_point(aes(col = FromPerson), size = 3) +
+        theme_bw() +
+        scale_color_manual("", values = person_colors) +
+        scale_y_continuous(limits = c(0, max(DFControls$Cells_per_g_feces_FR))) +
+        xlab("Events per second") +
+        ylab("Cells [per g feces] (Volume from set flow rate)")
+```
+
+
+
+```{r, echo = FALSE, message = FALSE, fig.width = 8, figh.height = 7, warning = FALSE}
+Tr
+```
+
+
+```{r, echo = FALSE, message = FALSE, fig.width = 8, figh.height = 7, warning = FALSE}
+Tr1
+```
+
+
+
+- **Conclusion: Looks pretty good, keeping in mind that person 5 was still run with the old protocol that included washing and spinning**
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+rm(list = ls())
+```
+
+
+

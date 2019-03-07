@@ -1,0 +1,76 @@
+--- 
+title: "DIRECT Study counting Project: Current Data"
+author: "TB"
+date: "`r Sys.Date()`"
+site: bookdown::bookdown_site
+# -- Define the output option, i.e. whether you want to build a html document, a pdf, or a gitbook
+output: bookdown::html_document2
+# output: bookdown::gitbook
+# output: bookdown::pdf_book
+# --
+documentclass: book
+classoption: a4paper
+#bibliography: [book.bib, packages.bib]
+#biblio-style: apalike
+link-citations: yes
+# description: "MicrobDiab Analysis"
+#output: bookdown::pdf_book
+#  fig_width: 7
+# output: html_document
+---
+
+
+
+
+## Load packages (and color schemes)
+
+<!-- Load required packages -->
+
+```{r, echo = FALSE, message=FALSE, include = FALSE}
+# - install packages -
+# NB: all packages have to be installed, usually via install.packages()
+# but some you need to install via bioconductor, e.g.:
+# source("https://bioconductor.org/biocLite.R")
+# biocLite("phyloseq")
+# --
+
+# - load packages -
+library(ggplot2); # packageVersion("ggplot2")
+library(dplyr); # packageVersion("dplyr")
+library(tidyr); # packageVersion("tidyr")
+library(gridExtra); # packageVersion("gridExtra")
+library(xtable); # packageVersion("xtable")
+library(viridis); # packageVersion("viridis")
+library(ggpubr); # packageVersion("ggpubr")
+library(RColorBrewer)
+library(lubridate)
+library(knitr)
+library(reshape2)
+
+# library(breakaway)
+library(bookdown)
+```
+
+
+
+
+## Load functions and set some inputs
+<!-- all lines where user user input is required or possible are marked with NB: USER INPUT and NB: user input, respectively -->
+
+
+```{r, echo = FALSE, message=FALSE}
+# - source all functions -
+functionpath <- "/Users/jvb740/MarieCurie_Work/CellCounting_TaskForce/FlowCytometryAnalysis/DIRECT/Functions_FC/"
+function_file <- "20190103_FlowCytometry_Functions.R"
+source(file.path(functionpath, function_file))
+# --
+
+# - for ggpubr -
+symnum.args = list(cutpoints = c(0, 1e-04, 0.001, 0.01, 0.05, 1), symbols = c("****", "***", "**", "*", "ns"))
+# -- 
+```
+
+
+
+
+
